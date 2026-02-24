@@ -10,8 +10,6 @@ from peppermint.config import Config, global_config
 from peppermint.descriptors import (
     LazyDescriptor,
     ModelProxy,
-    SubFactoryDescriptor,
-    SubListFactoryDescriptor,
 )
 from peppermint.traits import Trait
 
@@ -19,10 +17,10 @@ T = typing.TypeVar("T")
 
 
 def _collect_definitions(
-    attrs: dict[str, typing.Any],
-) -> tuple[dict[str, typing.Any], dict[str, typing.Any]]:
-    declarations: dict[str, typing.Any] = {}
-    traits: dict[str, typing.Any] = {}
+    attrs: typing.Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, Trait]]:
+    declarations: dict[str, object] = {}
+    traits: dict[str, Trait] = {}
 
     for attr_name, attr_value in attrs.items():
         if attr_name.startswith("__"):
@@ -51,16 +49,16 @@ class FactoryMeta(type):
         cls,
         name: str,
         bases: tuple[type, ...],
-        attrs: dict[str, typing.Any],
+        attrs: dict[str, object],
     ) -> type:
         if name == "Factory":
             return super().__new__(cls, name, bases, attrs)
 
-        declarations: dict[str, typing.Any] = {}
-        traits: dict[str, typing.Any] = {}
+        declarations: dict[str, object] = {}
+        traits: dict[str, Trait] = {}
 
         for base in reversed(bases):
-            base_declarations, base_traits = _collect_definitions(base.__dict__)  # type: ignore
+            base_declarations, base_traits = _collect_definitions(base.__dict__)
             declarations.update(base_declarations)
             traits.update(base_traits)
 
@@ -68,13 +66,14 @@ class FactoryMeta(type):
         declarations.update(instance_declarations)
         traits.update(instance_traits)
 
-        try:
-            model_class = attrs["__orig_bases__"][0].__args__[0]
-            if dataclasses.is_dataclass(model_class):
-                fields = dataclasses.fields(model_class)
-                print("fields = ", fields)
-        except (IndexError, KeyError):
-            model_class = dict
+        model_class: type[object] = dict
+        orig_bases = attrs.get("__orig_bases__")
+        if isinstance(orig_bases, tuple) and orig_bases:
+            base_args = getattr(orig_bases[0], "__args__", None)
+            if isinstance(base_args, tuple) and base_args:
+                args_tuple = typing.cast(tuple[object, ...], base_args)
+                if isinstance(args_tuple[0], type):
+                    model_class = args_tuple[0]
 
         attrs.update(
             {
@@ -91,23 +90,23 @@ class Factory[T](metaclass=FactoryMeta):
     __model_class__: type[T]
     __config__: Config
 
-    _declarations: typing.ClassVar[dict[str, typing.Any]]
+    _declarations: typing.ClassVar[dict[str, object]]
     _traits: typing.ClassVar[dict[str, Trait]]
 
     @classmethod
-    def _get_declarations(cls) -> dict[str, typing.Any]:
+    def _get_declarations(cls) -> dict[str, object]:
         return cls._declarations
 
     @classmethod
-    def _resolve(cls, *, overrides: dict[str, typing.Any] | None = None) -> dict[str, typing.Any]:
-        resolved: dict[str, typing.Any] = {}
+    def _resolve(cls, *, overrides: dict[str, object] | None = None) -> dict[str, object]:
+        resolved: dict[str, object] = {}
         ignored: set[str] = set()
         lazy_fields: list[tuple[str, LazyDescriptor]] = []
-        overrides: dict[str, typing.Any] = overrides or {}
+        resolved_overrides = overrides or {}
         faker = cls.__config__.faker
 
         for field_name, descriptor in cls._get_declarations().items():
-            if field_name in overrides:
+            if field_name in resolved_overrides:
                 continue
 
             if isinstance(descriptor, descriptors.IgnoreDescriptor):
@@ -121,40 +120,40 @@ class Factory[T](metaclass=FactoryMeta):
             if isinstance(descriptor, descriptors.Descriptor):
                 resolved[field_name] = descriptor.resolve(faker, ModelProxy(resolved))
 
-        for field_name, override_value in overrides.items():
+        for field_name, override_value in resolved_overrides.items():
             if field_name in ignored:
                 continue
 
             resolved[field_name] = override_value
 
         for field_name, lazy_descriptor in lazy_fields:
-            if field_name not in overrides:
+            if field_name not in resolved_overrides:
                 resolved[field_name] = lazy_descriptor.resolve(faker, ModelProxy(resolved))
 
         return resolved
 
     @classmethod
-    def to_dict(cls, overrides: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    def to_dict(cls, overrides: dict[str, object]) -> dict[str, object]:
         attrs = cls._resolve()
         attrs.update(overrides)
         return attrs
 
     @classmethod
-    def to_jsonable(cls, overrides: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    def to_jsonable(cls, overrides: dict[str, object]) -> dict[str, object]:
         attrs = cls.to_dict(overrides)
-        return _jsonify(attrs)
+        return typing.cast(dict[str, object], _jsonify(attrs))
 
     @classmethod
-    def build(cls, **overrides: typing.Any) -> T:
+    def build(cls, **overrides: object) -> T:
         attrs = cls._resolve(overrides=overrides)
         return cls.__model_class__(**attrs)
 
     @classmethod
-    def build_batch(cls, count: int, **overrides: typing.Any) -> list[T]:
-        return [cls.__model_class__(cls.build(**overrides)) for _ in range(count)]
+    def build_batch(cls, count: int, **overrides: object) -> list[T]:
+        return [cls.build(**overrides) for _ in range(count)]
 
 
-def _jsonify(value: typing.Any) -> typing.Any:
+def _jsonify(value: object) -> object:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):

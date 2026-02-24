@@ -1,6 +1,5 @@
 import dataclasses
 import random
-import time
 import uuid
 
 import faker as fakerlib
@@ -22,9 +21,10 @@ def configure(
     *,
     locale: str | None = None,
     faker: fakerlib.Faker | None = None,
-    seed: float | None = None,
+    seed: int | None = None,
 ) -> None:
-    seed = seed or uuid.uuid4().int
+    if seed is None:
+        seed = int(uuid.uuid4())
     random.seed(seed)
     global_config.faker.seed_instance(seed)
 

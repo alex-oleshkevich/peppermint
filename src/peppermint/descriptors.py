@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import decimal
 import random
 import typing
@@ -17,19 +18,21 @@ T = typing.TypeVar("T", default=dict)
 class ModelProxy:
     __slots__ = "_data"
 
-    def __init__(self, data: typing.Any) -> None:
+    def __init__(self, data: object) -> None:
         self._data = data
 
-    def __getattr__(self, name: str) -> typing.Any:
-        try:
-            return self._data[name]
-        except KeyError:
+    def __getattr__(self, name: str) -> object:
+        if isinstance(self._data, typing.Mapping):
+            mapping = typing.cast(typing.Mapping[str, object], self._data)
             try:
-                return getattr(self._data, name)
-            except AttributeError:
-                raise AttributeError(
-                    f'Field "{name}" not yet resolved or does not exist.'
-                ) from None
+                return mapping[name]
+            except KeyError:
+                pass
+
+        try:
+            return getattr(self._data, name)
+        except AttributeError:
+            raise AttributeError(f'Field "{name}" not yet resolved or does not exist.') from None
 
 
 class Descriptor[T]:
@@ -86,11 +89,11 @@ class SequenceDescriptor(Descriptor[T | str | int]):
         *,
         start: int = 1,
     ) -> None:
-        self._func = None
-        self._format = None
+        self._func: typing.Callable[[ModelProxy, int], T] | None = None
+        self._format: str | None = None
 
         if callable(format):
-            self._func = format
+            self._func = typing.cast(typing.Callable[[ModelProxy, int], T], format)
         else:
             self._format = format
 
@@ -116,7 +119,7 @@ class SubFactoryDescriptor(Descriptor[T]):
     def __init__(
         self,
         factory: type[Factory[T]] | typing.Callable[[], type[Factory[T]]],
-        attrs: dict[str, typing.Any] | None = None,
+        attrs: dict[str, object] | None = None,
     ) -> None:
         self._factory = factory
         self._kwargs = attrs or {}
@@ -129,7 +132,7 @@ class SubFactoryDescriptor(Descriptor[T]):
         return factory.build(**self._kwargs)
 
 
-class SubListFactoryDescriptor(Descriptor[T]):
+class SubListFactoryDescriptor(Descriptor[list[T]]):
     __slots__ = ("_count", "_factory", "_kwargs")
 
     def __init__(
@@ -137,54 +140,59 @@ class SubListFactoryDescriptor(Descriptor[T]):
         factory: type[Factory[T]] | typing.Callable[[], type[Factory[T]]],
         *,
         count: int = 1,
-        attrs: dict[str, typing.Any] | None = None,
+        attrs: dict[str, object] | None = None,
     ) -> None:
         self._count = count
         self._factory = factory
         self._kwargs = attrs or {}
 
-    def resolve(self, faker: faker.Faker, model_proxy: ModelProxy) -> T:
+    def resolve(self, faker: faker.Faker, model_proxy: ModelProxy) -> list[T]:
         factory = self._factory
         if callable(factory):
             factory = factory()
 
-        return factory.build_batch(self._count, **self._kwargs)
+        return typing.cast(list[T], factory.build_batch(self._count, **self._kwargs))
 
 
 class IgnoreDescriptor(Descriptor[typing.Never]):
     __slots__ = ()
 
-    def resolve(self, faker: faker.Faker, model_proxy: ModelProxy) -> T:
+    def resolve(self, faker: faker.Faker, model_proxy: ModelProxy) -> typing.NoReturn:
         raise RuntimeError("IgnoreDescriptor should never be resolved.")
 
 
 class _Gen:
-    def decimal(self, min: float, max: float, places: int = 2) -> Descriptor:
+    def decimal(
+        self,
+        min: builtins.float,
+        max: builtins.float,
+        places: builtins.int = 2,
+    ) -> Descriptor:
         value = decimal.Decimal(str(random.uniform(min, max)))
         quantum = decimal.Decimal("1").scaleb(-places)
         return CallDescriptor(value.quantize, quantum, rounding=decimal.ROUND_HALF_UP)
 
-    def normal(self, mean: float, stdev: float) -> Descriptor:
+    def normal(self, mean: builtins.float, stdev: builtins.float) -> Descriptor:
         if stdev < 0:
             raise ValueError("stdev must be >= 0.")
         return CallDescriptor(random.gauss, mean, stdev)
 
-    def sample(self, sequence: typing.Sequence[T], k: int) -> Descriptor:
+    def sample(self, sequence: typing.Sequence[T], k: builtins.int) -> Descriptor:
         return CallDescriptor(random.sample, sequence, k=k)
 
     def choices(
         self,
         sequence: typing.Sequence[T],
-        k: int = 1,
+        k: builtins.int = 1,
         *,
-        weights: typing.Sequence[float] | None = None,
+        weights: typing.Sequence[builtins.float] | None = None,
     ) -> Descriptor:
         return CallDescriptor(random.choices, sequence, k=k, weights=weights)
 
-    def uuid4(self) -> CallDescriptor:
+    def uuid4(self) -> Descriptor:
         return CallDescriptor(uuid.uuid4)
 
-    def string(self, length: int, alphabet: str = ascii_letters + digits) -> Descriptor:
+    def string(self, length: builtins.int, alphabet: str = ascii_letters + digits) -> Descriptor:
         if length < 0:
             raise ValueError("length must be >= 0.")
         if not alphabet and length > 0:
@@ -194,15 +202,15 @@ class _Gen:
     def bool(self) -> Descriptor:
         return CallDescriptor(random.choice, [True, False])
 
-    def bytes(self, n: int) -> Descriptor:
+    def bytes(self, n: builtins.int) -> Descriptor:
         if n < 0:
             raise ValueError("n must be >= 0.")
         return CallDescriptor(random.randbytes, n)
 
-    def int(self, min: int, max: int) -> Descriptor:
+    def int(self, min: builtins.int, max: builtins.int) -> Descriptor:
         return CallDescriptor(random.randint, min, max)
 
-    def float(self, min: float, max: float) -> Descriptor:
+    def float(self, min: builtins.float, max: builtins.float) -> Descriptor:
         return CallDescriptor(random.uniform, min, max)
 
     def choice(self, sequence: typing.Sequence[T]) -> Descriptor:
