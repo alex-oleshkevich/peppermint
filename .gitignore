@@ -23,6 +23,8 @@ ENV/
 # Coverage reports
 .coverage
 .coverage.*
+coverage.xml
+test-results.xml
 htmlcov/
 
 # Build and packaging artifacts
