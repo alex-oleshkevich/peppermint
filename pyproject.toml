@@ -33,35 +33,21 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.ruff]
-# Ruff: set the line length used by E501, isort wrapping, and formatter wrapping.
-line-length = 100
-# Ruff: minimum Python version target for upgrades and version-aware lint/format behavior.
+line-length = 120
 target-version = "py313"
-# Ruff: treat these directories as first-party import roots.
 src = ["src", "tests"]
-# Ruff: automatically exclude paths ignored by .ignore/.gitignore/.git/info/exclude/global gitignore.
 respect-gitignore = true
-# Ruff: enforce exclude patterns even when files are passed explicitly (useful for pre-commit).
 force-exclude = true
-# Ruff: keep preview mode disabled (preview exposes unstable rules, fixes, and formatting).
 preview = false
-# Ruff: do not auto-fix by default; require explicit `--fix`.
 fix = false
-# Ruff: when fixes run, enumerate what was fixed.
 show-fixes = true
 
 [tool.ruff.lint]
-# Ruff docs recommend using `select` (explicit ruleset) over `extend-select`.
 select = [
-    # pycodestyle errors.
     "E",
-    # pycodestyle warnings.
     "W",
-    # Pyflakes.
     "F",
-    # isort.
     "I",
-    # pyupgrade.
     "UP",
     # flake8-bugbear.
     "B",
@@ -76,66 +62,39 @@ select = [
     # Ruff-specific rules.
     "RUF",
 ]
-# Ruff: no global ignores; enforce selected rules everywhere.
 ignore = []
-# Ruff: keep all selected rules fixable (default is ["ALL"]).
 fixable = ["ALL"]
-# Ruff: do not mark any selected rules as non-fixable.
 unfixable = []
-# Ruff lint preview rules/fixes are unstable; keep them disabled.
-preview = false
 
 [tool.ruff.lint.flake8-annotations]
-# Allow missing `-> None` on `__init__` when at least one argument is annotated.
 mypy-init-return = true
-# Do not suppress ANN* for untyped declarations; require progressive typing discipline.
 ignore-fully-untyped = false
-# Suppress ANN000-level violations for "dummy" args like `_`.
 suppress-dummy-args = true
-# Do not suppress ANN401 for dynamically typed *args/**kwargs.
 allow-star-arg-any = false
 
 [tool.ruff.format]
-# Prefer double quotes.
 quote-style = "double"
-# Use spaces (PEP 8 recommends spaces for indentation).
 indent-style = "space"
-# Keep magic trailing comma behavior.
 skip-magic-trailing-comma = false
-# Normalize line endings to LF.
 line-ending = "lf"
-# Format Python snippets in docstrings.
 docstring-code-format = true
-# Use dynamic docstring snippet line length (tracks surrounding global line length).
 docstring-code-line-length = "dynamic"
-# Keep unstable preview formatting disabled.
-preview = false
 
 [tool.ty]
-# Ty root table enabled in `pyproject.toml` (`[tool.ty]`).
 
 [tool.ty.environment]
-# Python version used to analyze source code and version-gated typing behavior.
 python-version = "3.13"
-# Platform target used for `sys.platform`-conditioned typing behavior.
 python-platform = "all"
-# First-party module roots for resolution (project root + src layout).
 root = [".", "./src"]
 
 [tool.ty.src]
-# Files/directories to include in type analysis.
 include = ["src", "tests"]
-# Files/directories to exclude from type analysis.
 exclude = ["_generated", ".venv", "build", "dist"]
-# Respect .ignore/.gitignore/.git/info/exclude/global ignore files.
 respect-ignore-files = true
 
 [tool.ty.terminal]
-# Print diagnostics with context/hints (`full`) instead of one-line output (`concise`).
 output-format = "full"
-# Exit non-zero when warning-level diagnostics exist.
 error-on-warning = true
 
 [tool.ty.rules]
-# Apply this severity to all rules unless overridden below.
 all = "error"
