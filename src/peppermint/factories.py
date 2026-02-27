@@ -2,18 +2,36 @@ import dataclasses
 import datetime
 import decimal
 import enum
+import time
 import typing
 import uuid
+
+import faker
 
 from peppermint import descriptors
 from peppermint.config import Config, global_config
 from peppermint.descriptors import (
+    AutoDescriptor,
+    Descriptor,
     LazyDescriptor,
     ModelProxy,
 )
 from peppermint.traits import Trait
 
 T = typing.TypeVar("T")
+
+
+def iter_items[T = typing.Any](obj: typing.Mapping[str, T]) -> typing.Iterator[tuple[str, T]]:
+    for attr_name, attr_value in obj.items():
+        if attr_name.startswith("__"):
+            continue
+        if attr_name in ["_declarations", "_traits"]:
+            continue
+
+        if isinstance(attr_value, (classmethod, property, staticmethod)):
+            continue
+
+        yield attr_name, attr_value
 
 
 def _collect_definitions(
@@ -44,6 +62,34 @@ def _collect_definitions(
     return declarations, traits
 
 
+def _collect_definitions_from_dataclass(model_class: typing.Any, manual_descriptors: set[str]) -> dict[str, Descriptor]:
+    descriptors: dict[str, Descriptor] = {}
+    hints = typing.get_type_hints(model_class)
+
+    for attr_name, attr_type in iter_items(hints):
+        if attr_name in manual_descriptors:
+            continue
+
+        field_type = attr_type
+        descriptors[attr_name] = AutoDescriptor(attr_name, field_type)
+
+    return descriptors
+
+
+class DescriptorExtractor(typing.Protocol):
+    def __call__(self, model_class: object, manual_descriptors: set[str]) -> dict[str, Descriptor]: ...
+
+
+def smart_extractor(model_class: object, manual_descriptors: set[str]) -> dict[str, Descriptor]:
+    if dataclasses.is_dataclass(model_class):
+        return _collect_definitions_from_dataclass(model_class, manual_descriptors)
+
+    if hasattr(model_class, "__annotations__"):
+        return _collect_definitions_from_dataclass(model_class, manual_descriptors)
+
+    raise RuntimeError(f"Unsupported model class: {model_class!r}")
+
+
 class FactoryMeta(type):
     def __new__(
         cls,
@@ -66,21 +112,28 @@ class FactoryMeta(type):
         declarations.update(instance_declarations)
         traits.update(instance_traits)
 
-        model_class: type[object] = dict
-        orig_bases = attrs.get("__orig_bases__")
-        if isinstance(orig_bases, tuple) and orig_bases:
-            base_args = getattr(orig_bases[0], "__args__", None)
-            if isinstance(base_args, tuple) and base_args:
-                args_tuple = typing.cast(tuple[object, ...], base_args)
-                if isinstance(args_tuple[0], type):
-                    model_class = args_tuple[0]
+        try:
+            orig_bases = attrs.get("__orig_bases__")
+            base_args = getattr(orig_bases[0], "__args__", None)  # type: ignore
+            args_tuple = typing.cast(tuple[object, ...], base_args)
+            model_class = args_tuple[0]
+        except (KeyError, TypeError):
+            model_class = dict
+        else:
+            extractor = typing.cast(DescriptorExtractor, attrs.get("__descriptor_extractor__", smart_extractor))
+            declarations.update(extractor(model_class, set(declarations.keys())))
+
+        locale = typing.cast(str, attrs.get("__locale__", global_config.locale))
+        seed = typing.cast(int, attrs.get("__seed__", global_config.seed))
+        faker_ = faker.Faker(locale)
+        faker_.seed_instance(seed)
 
         attrs.update(
             {
                 "_declarations": declarations,
                 "_traits": traits,
                 "__model_class__": model_class,
-                "__config__": attrs.get("__config__", global_config),
+                "__faker__": faker_,
             }
         )
         return super().__new__(cls, name, bases, attrs)
@@ -88,7 +141,10 @@ class FactoryMeta(type):
 
 class Factory[T](metaclass=FactoryMeta):
     __model_class__: type[T]
-    __config__: Config
+    __locale__: str
+    __faker__: faker.Faker
+    __seed__: int
+    __descriptor_extractor__ = smart_extractor
 
     _declarations: typing.ClassVar[dict[str, object]]
     _traits: typing.ClassVar[dict[str, Trait]]
@@ -103,7 +159,7 @@ class Factory[T](metaclass=FactoryMeta):
         ignored: set[str] = set()
         lazy_fields: list[tuple[str, LazyDescriptor]] = []
         resolved_overrides = overrides or {}
-        faker = cls.__config__.faker
+        faker = cls.__faker__
 
         for field_name, descriptor in cls._get_declarations().items():
             if field_name in resolved_overrides:
@@ -133,13 +189,13 @@ class Factory[T](metaclass=FactoryMeta):
         return resolved
 
     @classmethod
-    def to_dict(cls, overrides: dict[str, object]) -> dict[str, object]:
+    def to_dict(cls, overrides: dict[str, object] | None = None) -> dict[str, object]:
         attrs = cls._resolve()
-        attrs.update(overrides)
+        attrs.update(overrides or {})
         return attrs
 
     @classmethod
-    def to_jsonable(cls, overrides: dict[str, object]) -> dict[str, object]:
+    def to_json_dict(cls, overrides: dict[str, object] | None = None) -> dict[str, object]:
         attrs = cls.to_dict(overrides)
         return typing.cast(dict[str, object], _jsonify(attrs))
 

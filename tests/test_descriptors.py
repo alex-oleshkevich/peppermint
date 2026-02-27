@@ -1,3 +1,4 @@
+import datetime
 import decimal
 import uuid
 
@@ -5,7 +6,7 @@ import faker
 import pytest
 
 from peppermint import descriptors
-from peppermint.descriptors import ModelProxy
+from peppermint.descriptors import AutoDescriptor, ModelProxy
 from peppermint.factories import Factory
 
 
@@ -235,9 +236,7 @@ class TestSubFactoryDescriptor:
         class ChildFactory(Factory):
             first_name = descriptors.StaticValue("Ada")
             last_name = descriptors.StaticValue("Byron")
-            full_name = descriptors.LazyDescriptor(
-                lambda model: f"{model.first_name} {model.last_name}"
-            )
+            full_name = descriptors.LazyDescriptor(lambda model: f"{model.first_name} {model.last_name}")
 
         descriptor = descriptors.SubFactoryDescriptor(ChildFactory)
         resolved = descriptor.resolve(faker.Faker(), ModelProxy({}))
@@ -452,9 +451,7 @@ class TestSubListFactoryDescriptor:
         class ChildFactory(Factory):
             first_name = descriptors.StaticValue("Ada")
             last_name = descriptors.StaticValue("Byron")
-            full_name = descriptors.LazyDescriptor(
-                lambda model: f"{model.first_name} {model.last_name}"
-            )
+            full_name = descriptors.LazyDescriptor(lambda model: f"{model.first_name} {model.last_name}")
 
         descriptor = descriptors.SubListFactoryDescriptor(ChildFactory, count=2)
         assert descriptor.resolve(faker.Faker(), ModelProxy({})) == [
@@ -564,3 +561,164 @@ class TestSubListFactoryDescriptor:
             {"nested": [{"hello": "override"}, {"hello": "override"}]},
             {"nested": [{"hello": "override"}, {"hello": "override"}]},
         ]
+
+
+class TestAutoDescriptor:
+    def _faker(self) -> faker.Faker:
+        f = faker.Faker()
+        f.seed_instance(1)
+        return f
+
+    def test_name_based_str_fields(self) -> None:
+        f = self._faker()
+        proxy = ModelProxy({})
+        assert AutoDescriptor("first_name", str).resolve(f, proxy) == "Dennis"
+        assert AutoDescriptor("last_name", str).resolve(f, proxy) == "Boone"
+        assert AutoDescriptor("name", str).resolve(f, proxy) == "Dawn Simpson"
+        assert AutoDescriptor("username", str).resolve(f, proxy) == "ykennedy"
+        assert AutoDescriptor("job_title", str).resolve(f, proxy) == "Engineer, manufacturing systems"
+        assert AutoDescriptor("email", str).resolve(f, proxy) == "freemanpatricia@example.com"
+        assert AutoDescriptor("phone", str).resolve(f, proxy) == "(890)574-3915x00080"
+        assert AutoDescriptor("street", str).resolve(f, proxy) == "083 Crosby Plaza Apt. 533"
+        assert AutoDescriptor("city", str).resolve(f, proxy) == "Farleytown"
+        assert AutoDescriptor("state", str).resolve(f, proxy) == "Nebraska"
+        assert AutoDescriptor("country", str).resolve(f, proxy) == "Taiwan"
+        assert AutoDescriptor("country_code", str).resolve(f, proxy) == "TH"
+        assert AutoDescriptor("zipcode", str).resolve(f, proxy) == "84687"
+        assert AutoDescriptor("company", str).resolve(f, proxy) == "Lopez Ltd"
+        assert AutoDescriptor("description", str).resolve(f, proxy) == "Building four return represent view."
+        assert AutoDescriptor("title", str).resolve(f, proxy) == "Medical travel couple exist."
+        assert AutoDescriptor("slug", str).resolve(f, proxy) == "us-money-throughout"
+        assert AutoDescriptor("url", str).resolve(f, proxy) == "https://www.sanchez-salinas.biz/"
+        assert AutoDescriptor("ip", str).resolve(f, proxy) == "151.126.244.244"
+        assert AutoDescriptor("ipv6", str).resolve(f, proxy) == "c69d:4bd8:b3fa:7aa7:e1fa:b9d8:8c7e:134f"
+        assert AutoDescriptor("mac_address", str).resolve(f, proxy) == "84:bf:2c:e0:37:53"
+        assert (
+            AutoDescriptor("user_agent", str).resolve(f, proxy)
+            == "Opera/9.92.(Windows NT 5.1; as-IN) Presto/2.9.161 Version/11.00"
+        )
+        assert AutoDescriptor("password", str).resolve(f, proxy) == "QjRp5QhU#2"
+        assert (
+            AutoDescriptor("token", str).resolve(f, proxy)
+            == "110d035449c31eae1331fae4f496410806b40f0189d0f9270bb54be4673161e6"
+        )
+        assert AutoDescriptor("filename", str).resolve(f, proxy) == "natural.avi"
+        assert AutoDescriptor("filepath", str).resolve(f, proxy) == "/arrive/last.avi"
+        assert AutoDescriptor("mime_type", str).resolve(f, proxy) == "video/x-matroska"
+        assert AutoDescriptor("timezone", str).resolve(f, proxy) == "Africa/Tunis"
+        assert AutoDescriptor("locale", str).resolve(f, proxy) == "raj_IN"
+        assert AutoDescriptor("color", str).resolve(f, proxy) == "#7c240e"
+
+    def test_name_based_date_fields(self) -> None:
+        f = self._faker()
+        proxy = ModelProxy({})
+        assert AutoDescriptor("birth_date", datetime.date).resolve(f, proxy) == datetime.date(1925, 9, 28)
+        assert AutoDescriptor("start_date", datetime.date).resolve(f, proxy) == datetime.date(2017, 8, 4)
+        assert AutoDescriptor("end_date", datetime.date).resolve(f, proxy) == datetime.date(2012, 11, 22)
+        assert isinstance(AutoDescriptor("created_at", datetime.datetime).resolve(f, proxy), datetime.datetime)
+        assert isinstance(AutoDescriptor("published_at", datetime.datetime).resolve(f, proxy), datetime.datetime)
+
+    def test_name_based_int_fields(self) -> None:
+        f = self._faker()
+        proxy = ModelProxy({})
+        assert AutoDescriptor("age", int).resolve(f, proxy) == 17
+        assert AutoDescriptor("count", int).resolve(f, proxy) == 582
+        assert AutoDescriptor("port", int).resolve(f, proxy) == 8271
+
+    def test_int_id_is_positive(self) -> None:
+        f = self._faker()
+        proxy = ModelProxy({})
+        assert AutoDescriptor("id", int).resolve(f, proxy) >= 1
+        assert AutoDescriptor("pk", int).resolve(f, proxy) >= 1
+
+    def test_type_based_fallbacks(self) -> None:
+        f = self._faker()
+        proxy = ModelProxy({})
+        assert AutoDescriptor("score", float).resolve(f, proxy) == 129944532028.507
+        assert AutoDescriptor("is_active", bool).resolve(f, proxy) is False
+        assert isinstance(AutoDescriptor("happened_at", datetime.datetime).resolve(f, proxy), datetime.datetime)
+        assert AutoDescriptor("on_date", datetime.date).resolve(f, proxy) == datetime.date(2006, 8, 5)
+        assert isinstance(AutoDescriptor("at_time", datetime.time).resolve(f, proxy), datetime.time)
+        assert isinstance(AutoDescriptor("amount", decimal.Decimal).resolve(f, proxy), decimal.Decimal)
+        assert isinstance(AutoDescriptor("uid", uuid.UUID).resolve(f, proxy), uuid.UUID)
+
+    def test_optional_str_unwrapped(self) -> None:
+        f = self._faker()
+        f.seed_instance(1)
+        result = AutoDescriptor("first_name", str | None).resolve(f, ModelProxy({}))
+        assert result == "Dennis"
+
+    def test_unknown_type_returns_none(self) -> None:
+        f = self._faker()
+        result = AutoDescriptor("something", object).resolve(f, ModelProxy({}))
+        assert result is None
+
+
+class TestFakeDescriptor:
+    def test_calls_named_faker_method(self) -> None:
+        f = faker.Faker()
+        f.seed_instance(1)
+        descriptor = descriptors.FakeDescriptor("first_name")
+        assert descriptor.resolve(f, ModelProxy({})) == "Dennis"
+
+    def test_forwards_positional_args(self) -> None:
+        f = faker.Faker()
+        f.seed_instance(1)
+        descriptor = descriptors.FakeDescriptor("pystr", min_chars=5, max_chars=5)
+        result = descriptor.resolve(f, ModelProxy({}))
+        assert isinstance(result, str)
+        assert len(result) == 5
+
+    def test_forwards_keyword_args(self) -> None:
+        f = faker.Faker()
+        descriptor = descriptors.FakeDescriptor("random_int", min=42, max=42)
+        assert descriptor.resolve(f, ModelProxy({})) == 42
+
+    def test_called_at_resolve_time_not_construction(self) -> None:
+        f1 = faker.Faker()
+        f1.seed_instance(1)
+        f2 = faker.Faker()
+        f2.seed_instance(2)
+        descriptor = descriptors.FakeDescriptor("first_name")
+        assert descriptor.resolve(f1, ModelProxy({})) == "Dennis"
+        assert descriptor.resolve(f2, ModelProxy({})) == "Stephanie"
+
+    def test_unknown_method_raises_attribute_error(self) -> None:
+        descriptor = descriptors.FakeDescriptor("nonexistent_method_xyz")
+        with pytest.raises(AttributeError):
+            descriptor.resolve(faker.Faker(), ModelProxy({}))
+
+
+class TestFakerProxy:
+    def test_attribute_access_returns_callable(self) -> None:
+        proxy = descriptors.FakerProxy()
+        result = proxy.first_name
+        assert callable(result)
+
+    def test_call_produces_fake_descriptor(self) -> None:
+        proxy = descriptors.FakerProxy()
+        result = proxy.first_name()
+        assert isinstance(result, descriptors.FakeDescriptor)
+
+    def test_kwargs_forwarded_to_descriptor(self) -> None:
+        proxy = descriptors.FakerProxy()
+        descriptor = proxy.random_int(min=7, max=7)
+        assert descriptor.resolve(faker.Faker(), ModelProxy({})) == 7
+
+    def test_different_attributes_produce_different_methods(self) -> None:
+        proxy = descriptors.FakerProxy()
+        f = faker.Faker()
+        f.seed_instance(1)
+        first = proxy.first_name().resolve(f, ModelProxy({}))
+        assert isinstance(first, str)
+        last = proxy.last_name().resolve(f, ModelProxy({}))
+        assert isinstance(last, str)
+        assert first != last
+
+    def test_used_in_factory(self) -> None:
+        class _F(Factory):
+            name = descriptors.FakerProxy().first_name()
+
+        result = _F.build()
+        assert isinstance(result["name"], str)
+        assert len(result["name"]) > 0

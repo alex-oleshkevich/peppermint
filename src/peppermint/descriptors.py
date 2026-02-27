@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import datetime
 import decimal
 import random
 import typing
@@ -215,3 +216,164 @@ class _Gen:
 
     def choice(self, sequence: typing.Sequence[T]) -> Descriptor:
         return CallDescriptor(random.choice, sequence)
+
+
+class FakeDescriptor(Descriptor[T]):
+    __slots__ = ("_args", "_kwargs", "_method_name")
+
+    def __init__(self, method_name: str, *args: typing.Any, **kwargs: typing.Any) -> None:
+        self._method_name = method_name
+        self._args = args
+        self._kwargs = kwargs
+
+    def resolve(self, faker: faker.Faker, model_proxy: ModelProxy) -> T:
+        method = getattr(faker, self._method_name)
+        return method(*self._args, **self._kwargs)
+
+
+class FakerProxy:
+    def __getattr__(self, name: str) -> typing.Callable[..., FakeDescriptor]:
+        def descriptor_factory(*args: typing.Any, **kwargs: typing.Any) -> FakeDescriptor:
+            return FakeDescriptor(name, *args, **kwargs)
+
+        return descriptor_factory
+
+
+def _unwrap_optional(field_type: type) -> type:
+    args = typing.get_args(field_type)
+    if args:
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            return non_none[0]
+    return field_type
+
+
+class AutoDescriptor(Descriptor[typing.Any]):
+    def __init__(self, field_name: str, field_type: type) -> None:
+        self.field_name = field_name
+        self.field_type = field_type
+
+    def resolve(self, faker: faker.Faker, model_proxy: ModelProxy) -> typing.Any:
+        ft = _unwrap_optional(self.field_type)
+        name = self.field_name.lower().replace("_", "")
+
+        match name:
+            # identity
+            case "id" | "uuid" | "pk" | "uid" if ft is uuid.UUID:
+                return uuid.uuid4()
+            case "id" | "pk" if ft is builtins.int:
+                return faker.random_int(min=1)
+            # person
+            case "firstname" | "fname" if ft is str:
+                return faker.first_name()
+            case "lastname" | "lname" | "surname" | "familyname" if ft is str:
+                return faker.last_name()
+            case "fullname" | "name" | "displayname" if ft is str:
+                return faker.name()
+            case "username" | "login" if ft is str:
+                return faker.user_name()
+            case "jobtitle" | "position" | "role" | "occupation" if ft is str:
+                return faker.job()
+            # contact
+            case "email" | "emailaddress" if ft is str:
+                return faker.email()
+            case "phone" | "phonenumber" | "mobile" if ft is str:
+                return faker.phone_number()
+            # address
+            case "street" | "streetaddress" | "address" if ft is str:
+                return faker.street_address()
+            case "city" | "town" if ft is str:
+                return faker.city()
+            case "state" | "region" | "province" if ft is str:
+                return faker.state()
+            case "country" | "countryname" if ft is str:
+                return faker.country()
+            case "countrycode" if ft is str:
+                return faker.country_code()
+            case "zipcode" | "postalcode" | "postcode" if ft is str:
+                return faker.postcode()
+            # company
+            case "companyname" | "company" | "organization" | "org" if ft is str:
+                return faker.company()
+            # text
+            case "description" | "desc" | "bio" | "summary" | "note" | "notes" if ft is str:
+                return faker.sentence()
+            case "title" | "heading" if ft is str:
+                return faker.sentence(nb_words=4)
+            case "slug" if ft is str:
+                return faker.slug()
+            # web / network
+            case "url" | "website" | "homepage" if ft is str:
+                return faker.url()
+            case "ipaddress" | "ip" | "ipv4" if ft is str:
+                return faker.ipv4()
+            case "ipv6" if ft is str:
+                return faker.ipv6()
+            case "macaddress" | "mac" if ft is str:
+                return faker.mac_address()
+            case "useragent" | "ua" if ft is str:
+                return faker.user_agent()
+            # security
+            case "password" | "passwd" | "secret" if ft is str:
+                return faker.password()
+            case "token" | "accesstoken" | "apikey" if ft is str:
+                return faker.sha256()
+            # file / media
+            case "filename" if ft is str:
+                return faker.file_name()
+            case "filepath" | "path" if ft is str:
+                return faker.file_path()
+            case "mimetype" | "contenttype" if ft is str:
+                return faker.mime_type()
+            # locale / display
+            case "timezone" | "tz" if ft is str:
+                return faker.timezone()
+            case "locale" | "lang" | "language" if ft is str:
+                return faker.locale()
+            case "color" | "colour" | "hexcolor" if ft is str:
+                return faker.hex_color()
+            # temporal (date)
+            case "birthdate" | "dob" | "dateofbirth" if ft is datetime.date:
+                return faker.date_of_birth()
+            case "startdate" | "fromdate" if ft is datetime.date:
+                return faker.date_object()
+            case "enddate" | "todate" | "expirydate" | "expiresat" if ft is datetime.date:
+                return faker.date_object()
+            # temporal (datetime)
+            case "createdat" | "updatedat" | "deletedat" | "timestamp" if ft is datetime.datetime:
+                return faker.date_time()
+            case "publishedat" | "postedat" | "sentat" if ft is datetime.datetime:
+                return faker.date_time()
+            # numeric
+            case "age" if ft is builtins.int:
+                return faker.random_int(min=0, max=120)
+            case "count" | "quantity" | "qty" | "total" if ft is builtins.int:
+                return faker.random_int(min=0, max=1000)
+            case "port" if ft is builtins.int:
+                return faker.port_number()
+
+        if ft is str:
+            return faker.pystr()
+        if ft is int:
+            return faker.random_int()
+        if ft is float:
+            return faker.pyfloat()
+        if ft is bool:
+            return faker.boolean()
+        if ft is datetime.datetime:
+            return faker.date_time()
+        if ft is datetime.date:
+            return faker.date_object()
+        if ft is datetime.time:
+            return faker.time_object()
+        if ft is decimal.Decimal:
+            return faker.pydecimal()
+        if ft is uuid.UUID:
+            return uuid.uuid4()
+        if ft is bytes:
+            return faker.binary(length=16)
+        if typing.get_origin(ft) is list:
+            return []
+        if typing.get_origin(ft) is dict:
+            return {}
+        return None

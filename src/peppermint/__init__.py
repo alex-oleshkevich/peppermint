@@ -15,6 +15,8 @@ seq = descriptors.SequenceDescriptor
 sub = descriptors.SubFactoryDescriptor
 sub_list = descriptors.SubListFactoryDescriptor
 ignore = descriptors.IgnoreDescriptor
+auto = descriptors.AutoDescriptor
+fake = descriptors.FakerProxy
 
 
 __all__ = [
