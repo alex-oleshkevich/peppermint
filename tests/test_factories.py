@@ -92,6 +92,8 @@ class TestObjectFactory:
             name: str
 
         class _SomeFactory(Factory[_SomeObject]):
+            __build_strategy__ = "setattr"
+
             id = seq()
             name = lazy(lambda _: "John Doe")
 
@@ -108,6 +110,8 @@ class TestObjectFactory:
             city: str | None = "Warsaw"
 
         class _SomeFactory(Factory[_SomeUser]):
+            __build_strategy__ = "setattr"
+
             id = seq()
 
         result = _SomeFactory.build()
@@ -126,6 +130,7 @@ class TestObjectFactory:
             city: str | None = "Warsaw"
 
         class _SomeFactory(Factory[_SomeUser]):
+            __build_strategy__ = "setattr"
             __locale__ = "de"
             id = seq()
 

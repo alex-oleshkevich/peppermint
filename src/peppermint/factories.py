@@ -139,11 +139,16 @@ class FactoryMeta(type):
         return super().__new__(cls, name, bases, attrs)
 
 
+class BuildStrategy(typing.Protocol[T]):
+    def __call__(self, model_class: object, attrs: dict[str, typing.Any]) -> T: ...
+
+
 class Factory[T](metaclass=FactoryMeta):
     __model_class__: type[T]
     __locale__: str
     __faker__: faker.Faker
     __seed__: int
+    __build_strategy__: typing.Literal["setattr", "init"] | BuildStrategy[T] = "init"
     __descriptor_extractor__ = smart_extractor
 
     _declarations: typing.ClassVar[dict[str, object]]
@@ -202,7 +207,17 @@ class Factory[T](metaclass=FactoryMeta):
     @classmethod
     def build(cls, **overrides: object) -> T:
         attrs = cls._resolve(overrides=overrides)
-        return cls.__model_class__(**attrs)
+        if callable(cls.__build_strategy__):
+            return cls.__build_strategy__(cls.__model_class__, attrs)
+
+        if cls.__build_strategy__ == "init":
+            return cls.__model_class__(**attrs)
+
+        instance = cls.__model_class__()
+        for attr_name, attr_value in attrs.items():
+            setattr(instance, attr_name, attr_value)
+
+        return instance
 
     @classmethod
     def build_batch(cls, count: int, **overrides: object) -> list[T]:
